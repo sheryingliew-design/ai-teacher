@@ -1666,7 +1666,7 @@ export default function App() {
     } else {
       const headers = validRows[headerIdx].map(h => String(h).trim().toLowerCase());
       
-      const nameIdx = headers.findIndex(h => h.includes("student's name") || h.includes("学生姓名") || h.includes("姓名") || (h.includes("name") && !h.includes("class") && !h.includes("user") && !h.includes("branch") && !h.includes("parent")));
+      const nameIdx = headers.findIndex(h => h.includes("student's name") || h.includes("学生姓名") || h.includes("姓名") || h === "student" || h === "students" || (h.includes("name") && !h.includes("class") && !h.includes("user") && !h.includes("branch") && !h.includes("parent")));
       const userIdx = headers.findIndex(h => h.includes("student's id") || h.includes("学号") || h.includes("username") || h.includes("user name") || h.includes("账号") || h === "user" || h.includes("login") || (h.includes("id") && !h.includes("payment") && !h.includes("branch")));
       const classIdx = headers.findIndex(h => h.includes("class") || h.includes("班级") || h.includes("items") || h.includes("项目") || h.includes("课程"));
       const contactIdx = headers.findIndex(h => h.includes("contact") || h.includes("phone") || h.includes("联系") || h.includes("mobile") || h.includes("whatsapp"));
@@ -1912,7 +1912,7 @@ export default function App() {
             if (validCells.length >= 2) { headerRowIndex = i; break; }
         }
 
-        const jsonRaw = window.XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: "" });
+        const jsonRaw = window.XLSX.utils.sheet_to_json(sheet, { range: headerRowIndex, defval: "", blankrows: true });
         if (jsonRaw.length === 0) return;
 
         // Extract raw headers straight from the JSON object keys (including __EMPTY ones)
@@ -1920,18 +1920,19 @@ export default function App() {
         
         setTemplateHeaders(headers); 
         setTemplateData(jsonRaw); 
-        setTemplateFile({ name: file.name, workbook, sheetName });
+        setTemplateFile({ name: file.name, workbook, sheetName, headerRowIndex });
 
         const initialMapping = {};
-        const internalOptions = [...activeColumns, {id: 'name', name: 'Name'}, {id: 'username', name: 'Username'}];
         
         headers.forEach(h => {
           const lowerH = h.toLowerCase();
           // DO NOT auto-map if it's an empty or generic column
           if(lowerH.includes('__empty') || lowerH === '-' || lowerH.trim() === '') {
               initialMapping[h] = "";
+          } else if (lowerH.includes('name') || lowerH.includes('user') || lowerH.includes('姓名')) {
+              initialMapping[h] = "key";
           } else {
-              const match = internalOptions.find(c => lowerH.includes(c.name.split(' ')[0].toLowerCase()) || lowerH.includes(c.id.toLowerCase()));
+              const match = activeColumns.find(c => lowerH.includes(c.name.split(' ')[0].toLowerCase()) || lowerH.includes(c.id.toLowerCase()));
               initialMapping[h] = match ? match.id : "";
           }
         });
@@ -1944,6 +1945,11 @@ export default function App() {
   };
 
   const processSmartFillExport = () => {
+    if (!templateFile || !templateFile.workbook) {
+        setToastMessage("Error: Template file not properly loaded.");
+        return;
+    }
+
     const matchStudent = (templateNameOrUser) => {
       const t = String(templateNameOrUser).toLowerCase().trim();
       if (!t) return null;
@@ -1972,7 +1978,7 @@ export default function App() {
       let matchedStudent = null;
       // ONLY use explicit keys mapped by user (Username or Name) to find the student
       for (const [header, mappedId] of Object.entries(columnMapping)) {
-          if ((mappedId === 'username' || mappedId === 'name') && row[header]) {
+          if (mappedId === 'key' && row[header]) {
               matchedStudent = matchStudent(row[header]);
               if (matchedStudent) break; // found it
           }
@@ -2006,8 +2012,12 @@ export default function App() {
              
              // STRICT RULE: If the user mapped this column as 'Name' or 'Username'
              // it acts ONLY as a search key. We NEVER overwrite it. We keep the Excel's original value.
-             if (mappedColId === 'name' || mappedColId === 'username') {
+             if (mappedColId === 'key') {
                  newRow[h] = row[h]; 
+             } else if (mappedColId === 'student_gender') {
+                 newRow[h] = matchedStudent.gender === 'Female' ? (lang==='zh'?'女':'Female') : matchedStudent.gender === 'Male' ? (lang==='zh'?'男':'Male') : matchedStudent.gender;
+             } else if (mappedColId === 'student_contact') {
+                 newRow[h] = matchedStudent.contact || row[h];
              } else {
                  // For all other data columns, we fill in the data from the system, falling back to original if blank
                  newRow[h] = record[mappedColId] !== undefined && record[mappedColId] !== "" ? record[mappedColId] : row[h]; 
@@ -2021,11 +2031,17 @@ export default function App() {
     });
 
     try {
-      // Force headers to be the exact original template headers
-      const newSheet = window.XLSX.utils.json_to_sheet(newData, { header: templateHeaders });
-      const newWb = window.XLSX.utils.book_new();
-      window.XLSX.utils.book_append_sheet(newWb, newSheet, templateFile.sheetName);
-      window.XLSX.writeFile(newWb, `SmartFilled_${templateFile.name.replace(/\.[^/.]+$/, "")}.xlsx`);
+      const wb = templateFile.workbook;
+      const sheet = wb.Sheets[templateFile.sheetName];
+      
+      // Update the existing sheet directly to preserve all formatting, column widths, and original headers
+      window.XLSX.utils.sheet_add_json(sheet, newData, { 
+          header: templateHeaders, 
+          skipHeader: true, 
+          origin: { r: templateFile.headerRowIndex + 1, c: 0 }
+      });
+
+      window.XLSX.writeFile(wb, `SmartFilled_${templateFile.name.replace(/\.[^/.]+$/, "")}.xlsx`);
       
       if (missingStudentsCount > 0) {
           setToastMessage(`⚠️ 导出成功！但有 ${missingStudentsCount} 行记录无法匹配到班级里的学生，被保留原样。`);
@@ -2036,8 +2052,8 @@ export default function App() {
       
       setIsSmartFillModalOpen(false); setSmartFillStep(1);
     } catch (err) {
-        setToastMessage("Export failed.");
-        setTimeout(() => setToastMessage(""), 3000);
+        setToastMessage("Export failed: " + (err instanceof Error ? err.message : String(err)));
+        setTimeout(() => setToastMessage(""), 5000);
     }
   };
 
@@ -2980,30 +2996,39 @@ export default function App() {
                 <div>
                   <p className="text-sm text-gray-500 mb-6 font-medium">{lang === 'zh' ? '请将模板中的列与系统中的数据字段对应起来。' : 'Please map the columns in your template to the data fields in the system.'}</p>
                   <div className="space-y-4">
-                    {templateHeaders.map((header: string) => (
+                    {templateHeaders.map((header: string) => {
+                      const lowerH = header.toLowerCase();
+                      const isKeyColumn = lowerH.includes('name') || lowerH.includes('user') || lowerH.includes('姓名');
+                      
+                      return (
                       <div key={header} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-200">
                         <span className="font-bold text-gray-700 w-1/3 truncate" title={header}>{header}</span>
                         <ArrowRight className="w-4 h-4 text-gray-300 shrink-0 mx-2" />
-                        <select 
-                          value={columnMapping[header] || ''} 
-                          onChange={e => setColumnMapping({...columnMapping, [header]: e.target.value})}
-                          className="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-700 bg-white"
-                        >
-                          <option value="">-- {lang === 'zh' ? '忽略此列' : 'Ignore this column'} --</option>
-                          <optgroup label="Student Info">
-                            <option value="student_name">{t('name')}</option>
-                            <option value="student_username">{t('username')}</option>
-                            <option value="student_gender">{t('gender')}</option>
-                            <option value="student_contact">{t('contact')}</option>
-                          </optgroup>
-                          <optgroup label="Lesson Data">
-                            {activeColumns.map(col => (
-                              <option key={col.id} value={`col_${col.id}`}>{col.name}</option>
-                            ))}
-                          </optgroup>
-                        </select>
+                        {isKeyColumn ? (
+                          <div className="flex-1 flex items-center gap-2 text-sm font-bold text-purple-600 bg-purple-50 px-3 py-2.5 rounded-lg border border-purple-200">
+                            <Key className="w-4 h-4" />
+                            {lang === 'zh' ? '用于匹配学生 (自动锁定)' : 'Used to match student (Locked)'}
+                          </div>
+                        ) : (
+                          <select 
+                            value={columnMapping[header] || ''} 
+                            onChange={e => setColumnMapping({...columnMapping, [header]: e.target.value})}
+                            className="flex-1 border-2 border-gray-200 rounded-lg p-2 focus:ring-2 focus:ring-purple-500 outline-none font-bold text-gray-700 bg-white"
+                          >
+                            <option value="">-- {lang === 'zh' ? '忽略此列' : 'Ignore this column'} --</option>
+                            <optgroup label="Student Info">
+                              <option value="student_gender">{t('gender')}</option>
+                              <option value="student_contact">{t('contact')}</option>
+                            </optgroup>
+                            <optgroup label="Lesson Data">
+                              {activeColumns.map(col => (
+                                <option key={col.id} value={col.id}>{col.name}</option>
+                              ))}
+                            </optgroup>
+                          </select>
+                        )}
                       </div>
-                    ))}
+                    )})}
                   </div>
                 </div>
               )}
