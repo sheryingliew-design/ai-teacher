@@ -1945,6 +1945,11 @@ export default function App() {
   };
 
   const processSmartFillExport = () => {
+    if (!templateFile || !templateFile.workbook) {
+        setToastMessage("Error: Template file not properly loaded.");
+        return;
+    }
+
     const matchStudent = (templateNameOrUser) => {
       const t = String(templateNameOrUser).toLowerCase().trim();
       if (!t) return null;
@@ -2047,8 +2052,8 @@ export default function App() {
       
       setIsSmartFillModalOpen(false); setSmartFillStep(1);
     } catch (err) {
-        setToastMessage("Export failed.");
-        setTimeout(() => setToastMessage(""), 3000);
+        setToastMessage("Export failed: " + (err instanceof Error ? err.message : String(err)));
+        setTimeout(() => setToastMessage(""), 5000);
     }
   };
 
