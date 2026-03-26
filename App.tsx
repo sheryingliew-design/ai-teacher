@@ -642,7 +642,8 @@ export default function App() {
     const inputClasses = `w-full bg-white border border-white shadow-[inset_0_1px_3px_rgba(0,0,0,0.08)] focus:bg-white ${currentTheme?.inputFocus || ''} rounded-lg p-2 text-sm outline-none transition-all ${currentTheme?.text || ''} font-medium ${disabled ? 'opacity-50 cursor-not-allowed bg-gray-50' : ''}`;
     
     if (col.type === 'select') {
-      const options = (col.options || "").split(',');
+      const optionsStr = Array.isArray(col.options) ? col.options.join(',') : (col.options || "");
+      const options = optionsStr.split(',');
       const listId = `list_${col.id}_${studentId}`;
       return (
         <div className="relative w-full">
@@ -2869,7 +2870,7 @@ export default function App() {
                       <input type="text" value={col.name} onChange={(e) => { const newCols = [...activeColumns]; newCols[idx].name = e.target.value; setActiveColumns(newCols); }} className="font-bold text-sm w-full border-2 border-gray-100 rounded-lg p-2.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none transition-all" />
                       {/* 如果类型是 select，显示选项输入框 */}
                       {col.type === 'select' && (
-                        <input type="text" value={Array.isArray(col.options) ? col.options.join(', ') : col.options} onChange={(e) => { const newCols = [...activeColumns]; newCols[idx].options = e.target.value.split(',').map(s => s.trim()); setActiveColumns(newCols); }} placeholder="Options (comma separated)" className="mt-3 text-xs w-full text-gray-600 font-medium border-2 border-dashed border-gray-200 rounded-lg p-2.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none bg-gray-50 focus:bg-white transition-all" />
+                        <input type="text" value={Array.isArray(col.options) ? col.options.join(', ') : (col.options || '')} onChange={(e) => { const newCols = [...activeColumns]; newCols[idx].options = e.target.value.split(',').map(s => s.trim()); setActiveColumns(newCols); }} placeholder="Options (comma separated)" className="mt-3 text-xs w-full text-gray-600 font-medium border-2 border-dashed border-gray-200 rounded-lg p-2.5 focus:ring-4 focus:ring-blue-50 focus:border-blue-400 outline-none bg-gray-50 focus:bg-white transition-all" />
                       )}
                     </div>
                     {/* 列类型选择 */}
