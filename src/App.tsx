@@ -5,7 +5,7 @@ import {
   FileSpreadsheet, MessageCircle, FileUp, Wand2, ArrowRight,
   Camera, ImagePlus, Globe, Building, Key, Lock, Unlock, Shield, Palette,
   UserMinus, FileX, MessageSquare, UserPlus, ArrowUp, ArrowDown, Layers,
-  RotateCcw, LogOut, Receipt, Send, Copy, Search, AlertTriangle, Info
+  RotateCcw, LogOut, Receipt, Send, Copy, Search, AlertTriangle, Info, Menu
 } from 'lucide-react';
 
 declare global {
@@ -496,6 +496,8 @@ export default function App() {
   const [confirmAction, setConfirmAction] = useState({ isOpen: false, text: '', onConfirm: null });
   const [newClassType, setNewClassType] = useState<'tuition' | 'daycare'>('tuition');
   const [newStudentData, setNewStudentData] = useState({ name: '', username: '', password: '', gender: 'Male', contact: '' });
+  const [showOnlyWithContact, setShowOnlyWithContact] = useState(false);
+  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const handleCreateBranch = () => {
     if (!newBranchName.trim()) {
@@ -590,6 +592,7 @@ export default function App() {
   
   const classStudentsAll = students.filter(s => s.classId === activeClassId);
   const classStudents = classStudentsAll.filter(s => !s.isDeleted);
+  const displayedStudents = showOnlyWithContact ? classStudents.filter(s => s.contact && s.contact.trim() !== '') : classStudents;
   
   const classLessonsAll = lessons.filter(l => l.classId === activeClassId);
   const classLessons = classLessonsAll.filter(l => !l.isDeleted);
@@ -1690,8 +1693,9 @@ export default function App() {
         
         // Splits multiple classes inside one cell (e.g. separated by \n, comma, semicolon, or stuck together like ]THUR)
         let processedStr = rawClassStr
-            .replace(/\n|,|;/g, '|SPLIT|')
-            .replace(/\]\s*(?=[A-Za-z0-9\u4e00-\u9fa5])/g, ']|SPLIT|');
+            .replace(/\r\n|\n|\r|,|;|、|\/|\|/g, '|SPLIT|')
+            .replace(/\]\s*(?=[A-Za-z0-9\u4e00-\u9fa5])/g, ']|SPLIT|')
+            .replace(/(?=\b202[0-9]\b\s+)/g, '|SPLIT|'); // Smart split before years like 2026 only if followed by space
             
         let initialSplit = processedStr.split('|SPLIT|').map(c => c.trim()).filter(Boolean);
         let classNamesArray = initialSplit.length > 0 ? initialSplit : [activeClass?.name || (lang === 'zh' ? "未分配班级" : "Unassigned Class")];
@@ -1851,6 +1855,7 @@ export default function App() {
       let newImportCount = 0;
       const newParsedStudents = [];
       const currentClassStudents = students.filter(s => s.classId === targetId && !s.isDeleted);
+      const allBranchStudents = students.filter(s => s.branchId === activeBranchId && !s.isDeleted);
 
       (data.students || []).forEach((stu, idx) => {
         if (!stu.name) return; 
@@ -1860,7 +1865,10 @@ export default function App() {
         let studentId = existingStu ? existingStu.id : `s_img_${Date.now()}_${idx}`;
 
         if (!existingStu) {
-          const safeUsername = safeName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100);
+          // Check if student exists in other classes to reuse username
+          const globalStu = allBranchStudents.find(s => (s.name || '').toLowerCase().replace(/\s+/g, '') === safeName.toLowerCase().replace(/\s+/g, ''));
+          const safeUsername = globalStu ? globalStu.username : (safeName.replace(/\s+/g, '').toLowerCase() + Math.floor(Math.random() * 100));
+          
           const newS = { id: studentId, classId: targetId, branchId: activeBranchId, name: safeName, username: safeUsername, password: Math.random().toString(36).slice(-6).toUpperCase(), gender: String(stu.gender || 'Unknown'), contact: '', isDeleted: false };
           newParsedStudents.push(newS);
           syncSet('students', studentId, newS);
@@ -2065,8 +2073,9 @@ export default function App() {
   return (
     <div className="flex h-screen bg-gray-50 font-sans text-gray-800 overflow-hidden selection:bg-pink-200">
       {/* Sidebar */}
-      <div className="w-64 bg-white border-r border-gray-100 flex flex-col shadow-lg z-20 relative shrink-0">
-        <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-400 via-yellow-400 via-green-400 via-blue-400 to-purple-500"></div>
+      {isSidebarOpen && (
+        <div className="w-64 bg-white border-r border-gray-100 flex flex-col shadow-lg z-20 relative shrink-0">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-400 via-yellow-400 via-green-400 via-blue-400 to-purple-500"></div>
         <div className="p-5 border-b border-gray-50 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <img src="https://i.postimg.cc/QMJWSFh4/TRANSPARENT.png" alt="Logo" className="h-9 w-auto object-contain" />
@@ -2167,6 +2176,7 @@ export default function App() {
           <button onClick={() => isSuperAdmin ? setAdminDashboardOpen(true) : setAdminLoginPrompt({ isOpen: true, passwordInput: '', error: '' })} className="w-full py-2 bg-gray-800 text-white rounded-lg text-xs font-bold flex items-center justify-center gap-2"><Shield className="w-3.5 h-3.5" /> {isSuperAdmin ? t('adminDashboard') : t('superAdmin')}</button>
         </div>
       </div>
+      )}
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col h-full overflow-hidden relative">
@@ -2191,6 +2201,9 @@ export default function App() {
           /* --- RECYCLE BIN VIEW --- */
           <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
              <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center z-10 sticky top-0 shrink-0 shadow-sm">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 mr-3 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors" title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}>
+                  <Menu className="w-5 h-5" />
+                </button>
                 <Trash2 className="w-6 h-6 text-rose-500 mr-3" />
                 <h2 className="text-xl font-extrabold text-gray-800">{t('recycleBin')} - {activeBranch?.name}</h2>
              </div>
@@ -2269,6 +2282,9 @@ export default function App() {
           <div className="flex-1 flex flex-col overflow-hidden bg-gray-50">
              <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10 sticky top-0 shrink-0 shadow-sm">
                 <div className="flex items-center gap-3">
+                  <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors" title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}>
+                    <Menu className="w-5 h-5" />
+                  </button>
                   <Receipt className="w-6 h-6 text-indigo-500" />
                   <h2 className="text-xl font-extrabold text-gray-800">{t('paymentReminder')}</h2>
                 </div>
@@ -2333,11 +2349,16 @@ export default function App() {
           /* --- ALL STUDENTS VIEW (BRANCH LEVEL) --- */
           <>
             <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10 sticky top-0 shrink-0">
-              <div className="min-w-0 pr-4">
-                <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2 truncate"> {activeBranch?.name} <span className="text-gray-300 font-light shrink-0">/</span> <span className="text-orange-600">{t('allStudents')}</span> </h2>
-                <div className="flex items-center gap-4 mt-1.5">
-                  <div className="flex items-center gap-1.5 bg-orange-50 text-orange-700 border border-orange-200 px-3 py-0.5 rounded-full text-xs font-bold shadow-sm">
-                    <Users className="w-3.5 h-3.5" /> {globalBranchStudents.length} {t('studentsInClass')}
+              <div className="min-w-0 pr-4 flex items-center gap-3">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors" title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}>
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div>
+                  <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2 truncate"> {activeBranch?.name} <span className="text-gray-300 font-light shrink-0">/</span> <span className="text-orange-600">{t('allStudents')}</span> </h2>
+                  <div className="flex items-center gap-4 mt-1.5">
+                    <div className="flex items-center gap-1.5 bg-orange-50 text-orange-700 border border-orange-200 px-3 py-0.5 rounded-full text-xs font-bold shadow-sm">
+                      <Users className="w-3.5 h-3.5" /> {globalBranchStudents.length} {t('studentsInClass')}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2362,7 +2383,9 @@ export default function App() {
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-gray-100 bg-white">
-                        {globalBranchStudents.map((student, idx) => (
+                        {globalBranchStudents
+                          .filter(student => !showOnlyWithContact || (student.contact && student.contact.trim() !== ''))
+                          .map((student, idx) => (
                             <tr key={student.username} className={`${idx % 2 === 0 ? 'bg-white' : 'bg-orange-50/30'} hover:bg-orange-50 transition-colors group`}>
                               <td className="whitespace-nowrap px-4 py-4 text-sm font-bold border-r border-gray-100 text-gray-800">
                                 {student.name}
@@ -2402,16 +2425,24 @@ export default function App() {
           /* --- CLASS VIEW --- */
           <>
             <div className="bg-white border-b border-gray-100 px-6 py-4 flex items-center justify-between z-10 sticky top-0 shrink-0">
-              <div className="min-w-0 pr-4">
-                <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2 truncate"> {activeBranch?.name} <span className="text-gray-300 font-light shrink-0">/</span> <span className="text-fuchsia-600">{activeClass?.name || (lang==='zh'?'暂无班级':'No Class')}</span> <span className="text-gray-300 font-light shrink-0">|</span> <span className="shrink-0 text-teal-600">{activeLesson?.date || (lang==='zh'?'暂无课程':'No Lesson')}</span> </h2>
-                <div className="flex items-center gap-4 mt-1.5">
-                  <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold shadow-inner"> <Users className="w-3.5 h-3.5" /> {classStudents.length} {t('studentsInClass')} </div>
-                  {activeClassId && (
-                    <div className="flex gap-2">
-                      <button onClick={() => setIsAddExistingModalOpen(true)} className="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200 flex items-center gap-1 px-3 py-1.5 rounded-full shadow-sm hover:shadow transition-all"> <UserPlus className="w-3 h-3" /> {t('addExisting')} </button>
-                      <button onClick={() => openStudentModal()} className="text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 flex items-center gap-1 px-3 py-1.5 rounded-full shadow-sm hover:shadow transition-all"> <Plus className="w-3 h-3" /> {t('addStudent')} </button>
-                    </div>
-                  )}
+              <div className="min-w-0 pr-4 flex items-center gap-3">
+                <button onClick={() => setIsSidebarOpen(!isSidebarOpen)} className="p-2 -ml-2 bg-gray-50 hover:bg-gray-100 text-gray-500 rounded-xl transition-colors" title={isSidebarOpen ? "Hide Sidebar" : "Show Sidebar"}>
+                  <Menu className="w-5 h-5" />
+                </button>
+                <div>
+                  <h2 className="text-xl font-extrabold text-gray-800 flex items-center gap-2 truncate"> {activeBranch?.name} <span className="text-gray-300 font-light shrink-0">/</span> <span className="text-fuchsia-600">{activeClass?.name || (lang==='zh'?'暂无班级':'No Class')}</span> <span className="text-gray-300 font-light shrink-0">|</span> <span className="shrink-0 text-teal-600">{activeLesson?.date || (lang==='zh'?'暂无课程':'No Lesson')}</span> </h2>
+                  <div className="flex items-center gap-4 mt-1.5">
+                    <div className="flex items-center gap-1.5 bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full text-xs font-bold shadow-inner"> <Users className="w-3.5 h-3.5" /> {classStudents.length} {t('studentsInClass')} </div>
+                    {activeClassId && (
+                      <div className="flex gap-2">
+                        <button onClick={() => setShowOnlyWithContact(!showOnlyWithContact)} className={`text-xs font-bold px-3 py-1.5 rounded-full shadow-sm hover:shadow transition-all flex items-center gap-1 ${showOnlyWithContact ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-green-50 text-green-600 border border-green-200 hover:bg-green-100'}`}>
+                          <MessageCircle className="w-3 h-3" /> {lang === 'zh' ? (showOnlyWithContact ? '显示全部' : '只看有联系方式') : (showOnlyWithContact ? 'Show All' : 'Has Contact')}
+                        </button>
+                        <button onClick={() => setIsAddExistingModalOpen(true)} className="text-xs font-bold text-violet-600 bg-violet-50 hover:bg-violet-100 border border-violet-200 flex items-center gap-1 px-3 py-1.5 rounded-full shadow-sm hover:shadow transition-all"> <UserPlus className="w-3 h-3" /> {t('addExisting')} </button>
+                        <button onClick={() => openStudentModal()} className="text-xs font-bold text-white bg-gradient-to-r from-blue-500 to-indigo-500 hover:from-blue-600 hover:to-indigo-600 flex items-center gap-1 px-3 py-1.5 rounded-full shadow-sm hover:shadow transition-all"> <Plus className="w-3 h-3" /> {t('addStudent')} </button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="flex flex-wrap items-center gap-2 shrink-0">
@@ -2470,7 +2501,14 @@ export default function App() {
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100 bg-white">
-                          {classStudents.map((student, idx) => {
+                          {displayedStudents.length === 0 && classStudents.length > 0 && (
+                            <tr>
+                              <td colSpan={4 + activeColumns.length} className="px-4 py-8 text-center text-gray-500 font-medium">
+                                {lang === 'zh' ? '没有找到有联系方式的学生' : 'No students found with a contact number.'}
+                              </td>
+                            </tr>
+                          )}
+                          {displayedStudents.map((student, idx) => {
                             const rec = records[`${student.id}_${activeLessonId}`] || {};
                             return (
                               <tr key={student.id} className={`${idx % 2 === 0 ? currentTheme?.row1 || '' : currentTheme?.row2 || ''} hover:bg-white/80 transition-colors group`}>
@@ -2655,7 +2693,7 @@ export default function App() {
             </div>
             <div className="flex-1 overflow-y-auto min-h-[300px] border border-gray-100 rounded-xl bg-gray-50 p-2">
               {globalBranchStudents
-                .filter(s => !s.joinedClasses?.includes(activeClassId) && s.name.toLowerCase().includes(existingSearch.toLowerCase()))
+                .filter(s => !s.joinedClasses?.includes(activeClassId) && (s.name || '').toLowerCase().includes(existingSearch.toLowerCase()))
                 .map(student => (
                   <div key={student.id} className="flex items-center justify-between p-3 bg-white mb-2 rounded-lg border border-gray-100 hover:border-violet-200 transition-colors">
                     <div>
@@ -2681,41 +2719,42 @@ export default function App() {
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-3xl p-8 w-full max-w-md shadow-2xl border border-gray-100 transform transition-all">
             <div className="flex justify-between items-center mb-6">
-              <h3 className="text-xl font-extrabold text-gray-800">{editingStudent ? t('editStudent') : t('addStudent')}</h3>
+              <h3 className="text-xl font-extrabold text-gray-800">{editingStudent.id ? t('editStudent') : t('addStudent')}</h3>
               <button onClick={() => setIsStudentModalOpen(false)} className="text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"><X className="w-5 h-5" /></button>
             </div>
             <div className="space-y-4">
               <div>
                 <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('name')} *</label>
-                <input type="text" value={newStudentData.name} onChange={e => setNewStudentData({...newStudentData, name: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-gray-800" placeholder="Student Name" autoFocus />
+                <input type="text" value={editingStudent.name} onChange={e => setEditingStudent({...editingStudent, name: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-gray-800" placeholder="Student Name" autoFocus />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('username')} *</label>
-                  <input type="text" value={newStudentData.username} onChange={e => setNewStudentData({...newStudentData, username: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="Unique ID" />
+                  <input type="text" value={editingStudent.username} onChange={e => setEditingStudent({...editingStudent, username: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="Unique ID" />
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('password')} *</label>
-                  <input type="text" value={newStudentData.password} onChange={e => setNewStudentData({...newStudentData, password: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="Password" />
+                  <input type="text" value={editingStudent.password} onChange={e => setEditingStudent({...editingStudent, password: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="Password" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('gender')}</label>
-                  <select value={newStudentData.gender} onChange={e => setNewStudentData({...newStudentData, gender: e.target.value as 'Male' | 'Female'})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-gray-800 bg-white">
+                  <select value={editingStudent.gender} onChange={e => setEditingStudent({...editingStudent, gender: e.target.value as 'Male' | 'Female' | 'Unknown'})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-bold text-gray-800 bg-white">
+                    <option value="Unknown">{lang==='zh'?'未知':'Unknown'}</option>
                     <option value="Male">{lang==='zh'?'男':'Male'}</option>
                     <option value="Female">{lang==='zh'?'女':'Female'}</option>
                   </select>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-gray-500 uppercase tracking-wider mb-1.5">{t('contact')}</label>
-                  <input type="text" value={newStudentData.contact} onChange={e => setNewStudentData({...newStudentData, contact: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="+60123456789" />
+                  <input type="text" value={editingStudent.contact} onChange={e => setEditingStudent({...editingStudent, contact: e.target.value})} className="w-full border-2 border-gray-200 rounded-xl p-3 focus:ring-4 focus:ring-blue-50 focus:border-blue-500 outline-none transition-all font-mono text-sm" placeholder="+60123456789" />
                 </div>
               </div>
             </div>
             <div className="flex justify-end gap-3 mt-8">
               <button onClick={() => setIsStudentModalOpen(false)} className="px-5 py-2.5 text-gray-500 font-bold hover:bg-gray-100 rounded-xl transition-colors">{t('cancel')}</button>
-              <button onClick={handleSaveStudent} className="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transition-all">{t('save')}</button>
+              <button onClick={saveStudent} className="px-5 py-2.5 bg-blue-600 text-white font-bold rounded-xl hover:bg-blue-700 shadow-md hover:shadow-lg transition-all">{t('save')}</button>
             </div>
           </div>
         </div>
